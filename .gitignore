@@ -1,0 +1,15 @@
+.DS_Store
+.idea/
+.vscode/
+*.iml
+target/
+build/
+*.class
+node_modules/
+dist/
+.next/
+__pycache__/
+*.pyc
+.venv/
+.env
+*.local
