@@ -1,0 +1,90 @@
+# ──────────────────────────────────────────────────────────────────────────
+# APISIX 声明式配置（standalone / config_provider: yaml）
+# 本文件即「配置即代码」的唯一事实源(SoT)：可版本化、可 yamllint、保存即热加载。
+# APISIX 周期性检测本文件 mtime（约 1s）并自动 reload——无需重启、无需 etcd。
+# 末尾的 #END 是 standalone 模式的必需结束标记，请勿删除。
+# ──────────────────────────────────────────────────────────────────────────
+
+upstreams:
+  - id: mock-upstream
+    name: mock-upstream
+    type: roundrobin
+    nodes:
+      "mock-upstream:8080": 1
+
+# 共享插件链：OIDC 校验 + 租户上下文注入 + 审计。受保护路由统一引用，避免重复（DRY）。
+# 🔒 openid-connect 与 tenant-context 必须成对出现：前者验签并注入 X-Userinfo，后者据此注入 X-Tenant-*。
+plugin_configs:
+  - id: auth-tenant
+    desc: "OIDC 校验 → 注入 X-Tenant-* → 审计（受保护路由共享）"
+    plugins:
+      openid-connect:
+        client_id: apisix
+        # 公开客户端 + JWKS 本地验签，不使用该密钥；此处仅为 schema 占位，非敏感信息。
+        client_secret: "local-dev-unused-bearer-jwks"
+        discovery: "http://keycloak:8080/realms/hashmatrix/.well-known/openid-configuration"
+        bearer_only: true
+        use_jwks: true
+        scope: openid
+        set_userinfo_header: true   # 校验通过后注入 X-Userinfo（tenant-context 据此取租户，并覆盖客户端伪造值）
+      tenant-context:
+        userinfo_header: X-Userinfo
+        tenant_claim: organization
+        fallback_claim: tenant
+        require_tenant: true
+      audit-log: {}
+
+routes:
+  # ── 受保护路由：共享 auth-tenant 链 + 按租户限流（每租户 100/min） ──
+  # 验收：无 token → 401；合法 token → 200，且上游可见 X-Tenant-*。
+  - id: protected-api
+    name: protected-api
+    desc: "受保护 API——租户上下文进入系统的第一道关"
+    uri: /api/*
+    upstream_id: mock-upstream
+    plugin_config_id: auth-tenant
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/(.*)", "/$1"]
+      limit-count:
+        count: 100
+        time_window: 60
+        key_type: var
+        key: tenant_id            # 注入后的可信租户变量（非 http_x_tenant_id，后者读客户端原始头）
+        rejected_code: 429
+        policy: local
+        allow_degradation: true
+
+  # ── 限流样例：按租户维度，count=2/60s，便于冒烟验证「每租户独立配额」 ──
+  - id: ratelimit-demo
+    name: ratelimit-demo
+    desc: "限流样例（按租户 2/60s）"
+    uri: /ratelimit/*
+    upstream_id: mock-upstream
+    plugin_config_id: auth-tenant
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/ratelimit/(.*)", "/$1"]
+      limit-count:
+        count: 2
+        time_window: 60
+        key_type: var
+        key: tenant_id
+        rejected_code: 429
+        policy: local
+
+  # ── 公共路由：无需认证（开放/健康端点示例），并用于热加载演示 ──
+  - id: public-open
+    name: public-open
+    desc: "公共开放端点（无鉴权）"
+    uri: /public/*
+    upstream_id: mock-upstream
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/public/(.*)", "/$1"]
+      response-rewrite:
+        headers:
+          set:
+            X-Gateway-Env: local-dev   # scripts/hot-reload.sh 翻转此值以演示热加载
+      audit-log: {}
+#END

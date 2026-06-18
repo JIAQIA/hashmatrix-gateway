@@ -1,0 +1,65 @@
+# 本地一键起栈：APISIX(standalone) + Keycloak(OIDC) + mock upstream。无 etcd。
+#
+# 决策：采用 APISIX standalone 声明式（config_provider: yaml）——配置即代码、Admin API 动态写入关闭、
+#       纯声明式热载；不引 etcd（避免业务路由配置与 etcd 耦合/漂移）。详见 apisix/README.md 与主仓架构 02。
+#
+# 用法：
+#   docker compose -f docker-compose.local.yml up -d apisix keycloak mock-upstream
+#   docker compose -f docker-compose.local.yml run --rm smoke     # 冒烟断言（401/200 + 头注入）
+#   ./scripts/hot-reload.sh                                       # 热加载验证
+#   docker compose -f docker-compose.local.yml down -v            # 拆栈
+#
+# 说明：镜像版本均已固定（pin tag）；若你的镜像源缺少对应 tag 可按需微调。
+name: hashmatrix-gateway-local
+
+services:
+  apisix:
+    image: apache/apisix:3.11.0-debian
+    restart: unless-stopped
+    depends_on:
+      - keycloak
+      - mock-upstream
+    ports:
+      - "9080:9080"
+    volumes:
+      - ./apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+      - ./plugins/tenant-context.lua:/usr/local/apisix/apisix/plugins/tenant-context.lua:ro
+      - ./plugins/audit-log.lua:/usr/local/apisix/apisix/plugins/audit-log.lua:ro
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    environment:
+      # 仅本地开发占位凭据，严禁用于任何真实环境。
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+
+  mock-upstream:
+    image: mccutchen/go-httpbin:v2.15.0
+    restart: unless-stopped
+    # go-httpbin 默认监听 8080；GET /headers 回显收到的请求头，便于断言注入。
+
+  # 冒烟测试容器（仅 `run` 时启动；纯 Python 标准库，无需 curl/jq）。
+  # 在 compose 网络内运行，与 APISIX/Keycloak 共用同一 issuer 主机名，规避 OIDC issuer 不一致。
+  smoke:
+    image: python:3.12-alpine
+    profiles: ["tools"]
+    depends_on:
+      - apisix
+      - keycloak
+      - mock-upstream
+    environment:
+      GATEWAY_URL: http://apisix:9080
+      KEYCLOAK_URL: http://keycloak:8080
+    volumes:
+      - ./scripts:/scripts:ro
+    working_dir: /scripts
+    command: ["python", "smoke_test.py"]

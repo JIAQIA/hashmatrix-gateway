@@ -1,0 +1,30 @@
+# APISIX 静态配置（启动期读取，不参与热加载）。
+# 采用 standalone / 声明式 YAML 模式：配置事实源(SoT) = apisix.yaml，无 etcd。
+# 详见 ./README.md。
+
+apisix:
+  node_listen: 9080
+  enable_control: true
+  control:
+    ip: "0.0.0.0"
+    port: 9092
+
+deployment:
+  role: data_plane
+  role_data_plane:
+    config_provider: yaml
+
+nginx_config:
+  error_log_level: warn
+
+# 启用的插件集合。显式声明会覆盖默认集，故需列全本仓用到的插件（含自定义插件）。
+plugins:
+  - real-ip
+  - request-id
+  - proxy-rewrite
+  - openid-connect
+  - tenant-context      # 自定义：JWT org/tenant → 注入 X-Tenant-*（核心）
+  - limit-count
+  - limit-req
+  - response-rewrite
+  - audit-log           # 自定义：结构化审计日志

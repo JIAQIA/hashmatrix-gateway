@@ -1,0 +1,84 @@
+{
+  "realm": "hashmatrix",
+  "enabled": true,
+  "displayName": "HashMatrix (demo)",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "organizationsEnabled": true,
+  "organizations": [
+    {
+      "name": "acme",
+      "alias": "acme",
+      "enabled": true,
+      "description": "示例企业租户（脱敏占位）",
+      "domains": [{ "name": "acme.example.com", "verified": true }]
+    },
+    {
+      "name": "tenant-demo",
+      "alias": "tenant-demo",
+      "enabled": true,
+      "description": "示例部门租户（脱敏占位）",
+      "domains": [{ "name": "demo.example.com", "verified": true }]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "apisix",
+      "name": "APISIX Gateway (demo)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect",
+      "redirectUris": ["*"],
+      "webOrigins": ["*"],
+      "attributes": {
+        "post.logout.redirect.uris": "+"
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant-org",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenant",
+            "claim.name": "organization",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "alice@acme.example.com",
+      "firstName": "Alice",
+      "lastName": "Demo",
+      "attributes": { "tenant": ["acme"] },
+      "credentials": [
+        { "type": "password", "value": "Passw0rd!", "temporary": false }
+      ]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "bob@demo.example.com",
+      "firstName": "Bob",
+      "lastName": "Demo",
+      "attributes": { "tenant": ["tenant-demo"] },
+      "credentials": [
+        { "type": "password", "value": "Passw0rd!", "temporary": false }
+      ]
+    }
+  ]
+}

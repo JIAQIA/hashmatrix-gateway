@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: 配置/插件 lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: yamllint（APISIX 配置 + compose + CI）
+        run: |
+          python3 -m pip install --quiet yamllint
+          yamllint -c .yamllint apisix docker-compose.local.yml .github
+
+      - name: luacheck（自定义插件）
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.1 luarocks
+          sudo luarocks install luacheck > /dev/null
+          luacheck plugins
+
+      - name: 校验 Keycloak realm JSON
+        run: python3 -m json.tool keycloak/realm-export.json > /dev/null
+
+  smoke:
+    name: docker-compose 起栈冒烟
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 起栈
+        run: docker compose -f docker-compose.local.yml up -d apisix keycloak mock-upstream
+
+      - name: 冒烟（401/200 + 头注入）
+        run: docker compose -f docker-compose.local.yml run --rm smoke
+
+      - name: 热加载验证（Linux runner 上走自动热加载分支，不重启）
+        run: ./scripts/hot-reload.sh
+
+      - name: 失败时打印日志
+        if: failure()
+        run: docker compose -f docker-compose.local.yml logs --no-color
+
+      - name: 拆栈
+        if: always()
+        run: docker compose -f docker-compose.local.yml down -v
