@@ -29,7 +29,8 @@ plugin_configs:
         set_userinfo_header: true   # 校验通过后注入 X-Userinfo（tenant-context 据此取租户，并覆盖客户端伪造值）
       tenant-context:
         userinfo_header: X-Userinfo
-        tenant_claim: organization
+        tenant_claim: organization            # 全部 org membership（单/多项）
+        active_tenant_claim: active_organization  # org-scoped token 选定的活动 org（§3.4 优先）
         fallback_claim: tenant
         require_tenant: true
       audit-log: {}

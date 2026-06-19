@@ -115,7 +115,26 @@ def main():
     org2 = header_value(json.loads(body).get("headers", {}), "X-Tenant-Org") if code == 200 else None
     check("第二租户 X-Tenant-Org=tenant-demo", org2 == "tenant-demo", f"got {org2!r}")
 
-    # 4) 安全：客户端伪造 X-Userinfo 无效（openid-connect 用验签结果覆盖）
+    # 4) 多 membership + 已选定活动 org（carol：organization=[acme, tenant-demo]、active_organization=acme）
+    #    → 解析到单一活动租户 acme、放行 200（修订后 ICD §3.4：活动 org 优先，不再「多 org 一律 403」）
+    token_carol = get_token("carol", "Passw0rd!")
+    code, body = http("GET", f"{GW}/api/headers",
+                      headers={"Authorization": f"Bearer {token_carol}"})
+    check("多 membership 携 active_organization 放行 200（非 403）", code == 200, f"got {code}")
+    headers_c = json.loads(body).get("headers", {}) if code == 200 else {}
+    tid_c = header_value(headers_c, "X-Tenant-Id")
+    org_c = header_value(headers_c, "X-Tenant-Org")
+    check("活动 org 优先：X-Tenant-Id=acme（非 tenant-demo）", tid_c == "acme", f"got {tid_c!r}")
+    check("X-Tenant-Org 同为活动 org acme", org_c == "acme", f"got {org_c!r}")
+
+    # 5) 多 membership 且无活动声明（dave：organization=[acme, tenant-demo]、无 active_organization）
+    #    → 不可判定唯一活动租户 → 边缘 fail-closed 403（绝不静默挑选）
+    token_dave = get_token("dave", "Passw0rd!")
+    code, _ = http("GET", f"{GW}/api/headers",
+                   headers={"Authorization": f"Bearer {token_dave}"})
+    check("多 membership 无 active_organization → fail-closed 403", code == 403, f"got {code}")
+
+    # 6) 安全：客户端伪造 X-Userinfo 无效（openid-connect 用验签结果覆盖）
     forged = base64.b64encode(
         json.dumps({"organization": "evil-tenant", "sub": "attacker"}).encode()).decode()
     code, body = http("GET", f"{GW}/api/headers",
@@ -123,11 +142,11 @@ def main():
     org = header_value(json.loads(body).get("headers", {}), "X-Tenant-Org") if code == 200 else None
     check("伪造 X-Userinfo 被 openid-connect 覆盖（非 evil-tenant）", org == "acme", f"got {org!r}")
 
-    # 5) 负路径：无效 token → 401
+    # 7) 负路径：无效 token → 401
     code, _ = http("GET", f"{GW}/api/headers", headers={"Authorization": "Bearer not-a-valid-jwt"})
     check("无效 token 返回 401", code == 401, f"got {code}")
 
-    # 6) 按租户限流：alice 在 /ratelimit (2/60s) 第 3 次 → 429；bob 独立配额仍 200
+    # 8) 按租户限流：alice 在 /ratelimit (2/60s) 第 3 次 → 429；bob 独立配额仍 200
     codes = [http("GET", f"{GW}/ratelimit/get",
                   headers={"Authorization": f"Bearer {token}"})[0] for _ in range(3)]
     check("同租户超限触发 429（每租户独立配额生效）",

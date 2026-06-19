@@ -47,6 +47,21 @@
             "user.attribute": "tenant",
             "claim.name": "organization",
             "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "active-org",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "active_tenant",
+            "claim.name": "active_organization",
+            "jsonType.label": "String",
             "id.token.claim": "true",
             "access.token.claim": "true",
             "userinfo.token.claim": "true"
@@ -76,6 +91,30 @@
       "firstName": "Bob",
       "lastName": "Demo",
       "attributes": { "tenant": ["tenant-demo"] },
+      "credentials": [
+        { "type": "password", "value": "Passw0rd!", "temporary": false }
+      ]
+    },
+    {
+      "username": "carol",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "carol@acme.example.com",
+      "firstName": "Carol",
+      "lastName": "Demo",
+      "attributes": { "tenant": ["acme", "tenant-demo"], "active_tenant": ["acme"] },
+      "credentials": [
+        { "type": "password", "value": "Passw0rd!", "temporary": false }
+      ]
+    },
+    {
+      "username": "dave",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "dave@acme.example.com",
+      "firstName": "Dave",
+      "lastName": "Demo",
+      "attributes": { "tenant": ["acme", "tenant-demo"] },
       "credentials": [
         { "type": "password", "value": "Passw0rd!", "temporary": false }
       ]
