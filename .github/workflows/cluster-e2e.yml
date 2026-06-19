@@ -1,0 +1,38 @@
+name: cluster-e2e
+
+# 集群末端 e2e（#9 · I2 验收）的触发位。手动触发、非阻塞——
+# 依赖 hashmatrix#15（governance 经网关可达）；集群不可达时脚本优雅 SKIP（exit 0）。
+# 待 #15 落地、有可达的 kind 单 ns 后，填入 inputs（或经 self-hosted/集群内 Job）真跑。
+on:
+  workflow_dispatch:
+    inputs:
+      gateway_url:
+        description: "集群网关 URL（空=用脚本默认，不可达则整体 SKIP）"
+        required: false
+        default: ""
+      keycloak_url:
+        description: "in-cluster Keycloak URL（token iss 须与网关 discovery 一致）"
+        required: false
+        default: ""
+      upstream_echo_path:
+        description: "上游回显请求头的受保护路径（空=跳过注入/防伪档，待 #15 接 governance）"
+        required: false
+        default: ""
+
+jobs:
+  cluster-e2e:
+    name: 集群末端 e2e（经网关 → 真实 governance）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 运行集群 e2e（集群不可达即 SKIP）
+        env:
+          GATEWAY_URL: ${{ inputs.gateway_url }}
+          KEYCLOAK_URL: ${{ inputs.keycloak_url }}
+          UPSTREAM_ECHO_PATH: ${{ inputs.upstream_echo_path }}
+        run: python scripts/cluster_e2e.py
