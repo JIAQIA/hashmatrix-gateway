@@ -38,6 +38,36 @@
 
 > 全局定义见主仓 `docs/00-主仓初始化-spec.md` 与 `docs/architecture/05-多租户与控制平面.md`。
 
+## 🔗 契约（Contracts）—— 跨子系统集成
+
+本项目经**契约**与其它子系统集成。契约的**单一事实源在主仓** `HashMatrixData/hashmatrix` 的 `contracts/`：
+- 索引（机器可读）`contracts/registry.yaml` · 规范 `contracts/CONVENTIONS.md` · 设计 `docs/architecture/06-契约治理.md`
+- 在线：https://github.com/HashMatrixData/hashmatrix/tree/main/contracts
+
+**铁律**：先改契约、再改实现；加法兼容默认放行，破坏性走 MAJOR + 弃用期双跑 + 通知消费方；消费方一律 tolerant reader。
+
+**本仓契约**：
+- producer：**`icd/tenant-context-headers`**（本仓是**唯一产生方**）——网关边缘注入的租户上下文头线契约。
+- consumer：暂无
+
+### producer · `icd/tenant-context-headers`（租户上下文头 · 唯一事实源 = 主仓 ICD）
+
+网关校验 Keycloak OIDC 后，从验签产物解析**单一活动租户**，向上游**注入**下列头（产生方实现见 `plugins/tenant-context.lua`）：
+
+| 头 | 语义 | 来源（Keycloak claim） | 必需 | 消费方（库绑定） |
+|--|--|--|--|--|
+| `X-Tenant-Id` | 稳定租户标识——数据/计算隔离的路由键（schema/catalog/namespace） | `active_organization` → 单一 `organization` → `tenant`（选择规则见 ICD §3.4） | 是 | `starter-tenant` → `TenantContext.tenantId` |
+| `X-Tenant-Org` | 活动 org 原始标识/别名（信息性，**不用于**隔离路由） | `organization`（活动 org 子项） | 否 | `starter-tenant` → `TenantContext.org`（可选） |
+| `X-Tenant-Subject` | 终端用户主体 | `sub` | 否 | 预留（当前未消费，consumer 须 tolerant） |
+
+- **消费方（服务，须遵循本契约）**：governance / security / tools-bi / privacy / data-foundation / platform-common / control-plane。
+- **头名唯一事实源是 ICD §2**；上表为速查，头名须与 `plugins/tenant-context.lua` 默认值（`id_header`/`org_header`/`subject_header`）及 ICD §8 一致性校验保持一致——当前均为 `X-Tenant-Id` / `X-Tenant-Org` / `X-Tenant-Subject`。
+- **信任根 = 网关**：进入即清洗客户端伪造的 `X-Tenant-*`，仅注入 `openid-connect` 验签后的可信值；缺身份/不可判定即 fail-closed（401/403）。信任与解析模型见 ICD §3–§5。
+
+**如何查阅（随时拉最新，勿存本地副本）**：
+- 在 superproject（`hashmatrix/services/gateway`）下：直接读 `../../contracts/icd/tenant-context-headers-icd.md`。
+- 独立 clone：WebFetch `https://raw.githubusercontent.com/HashMatrixData/hashmatrix/main/contracts/icd/tenant-context-headers-icd.md`（公开仓免鉴权）；或 `gh api repos/HashMatrixData/hashmatrix/contents/contracts/<path> -H "Accept: application/vnd.github.raw"`。
+
 ## 仓库定位
 
 南北向网关子模块：路由 / 限流 / 鉴权(OIDC) / 审计 的配置与插件。APISIX 或 Spring Cloud Gateway 待定。

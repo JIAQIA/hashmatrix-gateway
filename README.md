@@ -60,9 +60,9 @@ docker compose -f docker-compose.local.yml down -v
 
 **双模交付**：公网 SaaS（我们运营 · 统一**我们品牌** · 租户=企业）／私有化部署（客户环境 · **客户品牌**部署级 · 租户=客户部门）。品牌**部署级**、不按租户运行期换肤。多租户走 **C 分层桥接**：控制平面共享 + 数据平面按租户隔离（Keycloak Organizations 单 realm · schema/db-per-tenant · namespace-per-tenant），由 `control-plane` 编排开通。
 
-**本仓视角**：校验 Keycloak OIDC，从 JWT org 声明**注入 `X-Tenant-*` 头**——租户上下文入口。
+**本仓视角**：校验 Keycloak OIDC，从 JWT org 声明**注入 `X-Tenant-*` 头**——租户上下文入口。本仓是 `X-Tenant-*` 头契约（`icd/tenant-context-headers`）的**唯一产生方**，契约清单见 [`CLAUDE.md` §契约](CLAUDE.md)。
 
-> 详见主仓 `docs/00-主仓初始化-spec.md`、`docs/architecture/05-多租户与控制平面.md`。
+> 详见主仓 `docs/00-主仓初始化-spec.md`、`docs/architecture/05-多租户与控制平面.md`；头契约（单一事实源）见主仓 `contracts/icd/tenant-context-headers-icd.md`。
 
 ## 说明
 
