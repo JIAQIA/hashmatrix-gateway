@@ -60,7 +60,7 @@
 | `X-Tenant-Org` | 活动 org 原始标识/别名（信息性，**不用于**隔离路由） | `organization`（活动 org 子项） | 否 | `starter-tenant` → `TenantContext.org`（可选） |
 | `X-Tenant-Subject` | 终端用户主体 | `sub` | 否 | 预留（当前未消费，consumer 须 tolerant） |
 
-- **消费方（服务，须遵循本契约）**：governance / security / tools-bi / privacy / data-foundation / platform-common / control-plane。
+- **消费方（服务，须遵循本契约）**：governance / security / privacy / data-foundation / platform-common / control-plane。
 - **头名唯一事实源是 ICD §2**；上表为速查，头名须与 `plugins/tenant-context.lua` 默认值（`id_header`/`org_header`/`subject_header`）及 ICD §8 一致性校验保持一致——当前均为 `X-Tenant-Id` / `X-Tenant-Org` / `X-Tenant-Subject`。
 - **信任根 = 网关**：进入即清洗客户端伪造的 `X-Tenant-*`，仅注入 `openid-connect` 验签后的可信值；缺身份/不可判定即 fail-closed（401/403）。信任与解析模型见 ICD §3–§5。
 
