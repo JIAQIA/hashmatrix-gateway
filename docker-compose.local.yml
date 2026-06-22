@@ -19,6 +19,7 @@ services:
     depends_on:
       - keycloak
       - mock-upstream
+      - privacy-mock
     ports:
       - "9080:9080"
     volumes:
@@ -47,6 +48,14 @@ services:
     restart: unless-stopped
     # go-httpbin 默认监听 8080；GET /headers 回显收到的请求头，便于断言注入。
 
+  # privacy 编排层的本地替身——独立 upstream（镜像 chart 的 privacy-orchestrator-java，非复用 mock-upstream）。
+  # 以 `-prefix=/api` 起：privacy 路由 rewrite 保留 /api 前缀（→ /api/$1），故 echo 端点须落在 /api 下，
+  # rewrite 才能与集群逐字一致（避免为本地另造 rewrite 造成漂移）。镜像 CMD=[/bin/go-httpbin]，故须带上二进制路径。
+  privacy-mock:
+    image: mccutchen/go-httpbin:v2.15.0
+    restart: unless-stopped
+    command: ["/bin/go-httpbin", "-prefix=/api"]
+
   # 冒烟测试容器（仅 `run` 时启动；纯 Python 标准库，无需 curl/jq）。
   # 在 compose 网络内运行，与 APISIX/Keycloak 共用同一 issuer 主机名，规避 OIDC issuer 不一致。
   smoke:
@@ -56,6 +65,7 @@ services:
       - apisix
       - keycloak
       - mock-upstream
+      - privacy-mock
     environment:
       GATEWAY_URL: http://apisix:9080
       KEYCLOAK_URL: http://keycloak:8080

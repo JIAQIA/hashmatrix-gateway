@@ -18,6 +18,17 @@ upstreams:
     nodes:
       "mock-upstream:8080": 1
 
+  # 🌱 部署级可注入点 ③：privacy 编排层（隐私计算）上游。
+  # 本地 compose 自洽值 = privacy-mock（go-httpbin，**带 `-prefix=/api`**——见下方 privacy-api 路由注释）。
+  # 集群部署时由主仓 deploy/charts/gateway 经 values→ConfigMap 渲染为**真实 privacy 编排层**
+  # （chart `values.upstreams.privacy.*`，固定 Service 名 `privacy-orchestrator-java:8086`）。
+  # 与 chart 一致：privacy 是**独立 upstream**（非复用 mock-upstream），结构镜像 chart `configmap.yaml` 的 privacy-upstream。
+  - id: privacy-upstream
+    name: privacy-upstream
+    type: roundrobin
+    nodes:
+      "privacy-mock:8080": 1
+
 # 共享插件链：OIDC 校验 + 租户上下文注入 + 审计。受保护路由统一引用，避免重复（DRY）。
 # 🔒 openid-connect 与 tenant-context 必须成对出现：前者验签并注入 X-Userinfo，后者据此注入 X-Tenant-*。
 plugin_configs:
@@ -65,6 +76,24 @@ routes:
         rejected_code: 429
         policy: local
         allow_degradation: true
+
+  # ── privacy 受保护路由：复用 auth-tenant 链注入 X-Tenant-*，路由到隐私计算编排层 ──
+  # 结构镜像主仓 chart `configmap.yaml` 的 privacy-api（集群 SoT）；本地仅把上游换成 privacy-mock。
+  # priority 高于 protected-api（/api/* 兜底，默认 priority 0），确保 /api/privacy/* 不被通配抢走。
+  # rewrite **保留 /api 前缀**（→ /api/$1）——编排层对外端点为 /api/v1/psi/*（契约见主仓
+  #   contracts/openapi/privacy-orchestrator-v1.yaml）；客户端经 /api/privacy/v1/psi/intersect 访问。
+  # 本地 privacy-mock 以 go-httpbin `-prefix=/api` 起，故 rewrite 与集群**逐字一致**仍能命中 echo 端点。
+  # ⚠️ 改本路径/rewrite 时，须同步主仓 chart configmap.yaml 与 privacy 契约（三处一致，防漂移）。
+  - id: privacy-api
+    name: privacy-api
+    desc: "privacy 隐私计算编排层——经网关注入 X-Tenant-* 后路由到 privacy-upstream"
+    uri: /api/privacy/*
+    priority: 10
+    upstream_id: privacy-upstream
+    plugin_config_id: auth-tenant
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/privacy/(.*)", "/api/$1"]
 
   # ── 限流样例：按租户维度，count=2/60s，便于冒烟验证「每租户独立配额」 ──
   - id: ratelimit-demo

@@ -135,6 +135,27 @@ def main():
                    headers={"Authorization": f"Bearer {token_su}"})
     check("superadmin 访问租户路由 → fail-closed 403（require_tenant）", code == 403, f"got {code}")
 
+    # 12) privacy 路由：/api/privacy/* 经 auth-tenant 注入 X-Tenant-* 后路由到**独立** privacy-upstream。
+    #     守护 M1「privacy 经 gateway 可达 + 租户注入」这条验收的本地回归（结构镜像主仓 chart 的 privacy-api）。
+    #     可达性证明的精妙处：privacy-mock 以 `-prefix=/api` 起，只应答 /api/get；
+    #     若 priority 失效、被 /api/* 兜底抢走，其 rewrite(^/api/(.*)→/$1) 会把请求改写成 /privacy/get
+    #     打到**无 prefix** 的 mock-upstream → 404。故此处拿到 200 即证明 privacy 路由（priority 10）确实命中了 privacy-upstream。
+    # 12a) 无 token → fail-closed 401（与其它受保护路由一致）
+    code, _ = http("GET", f"{GW}/api/privacy/get")
+    check("privacy 路由无 token → 401（fail-closed）", code == 401, f"got {code}")
+    # 12b) alice → 200（即证明命中 privacy-upstream），上游收到注入的 X-Tenant-*，客户端伪造头被剥离
+    code, body = http("GET", f"{GW}/api/privacy/get", headers={
+        "Authorization": f"Bearer {token}",
+        "X-Tenant-Id": "spoofed-by-client",
+    })
+    check("privacy 路由 alice token 放行 200（命中 privacy-upstream，非 /api/* 兜底）", code == 200, f"got {code}")
+    ph = json.loads(body).get("headers", {}) if code == 200 else {}
+    ptid = header_value(ph, "X-Tenant-Id")
+    porg = header_value(ph, "X-Tenant-Org")
+    check("privacy 上游收到注入的 X-Tenant-Id=acme", ptid == "acme", f"got {ptid!r}")
+    check("privacy 上游收到注入的 X-Tenant-Org=acme", porg == "acme", f"got {porg!r}")
+    check("privacy 路由客户端伪造 X-Tenant-Id 被剥离", ptid not in ("spoofed-by-client", None), f"got {ptid!r}")
+
     print()
     if FAILS:
         sys.exit(f"SMOKE FAILED ({len(FAILS)} check(s)): {', '.join(FAILS)}")
