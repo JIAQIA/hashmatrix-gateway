@@ -8,8 +8,12 @@
 
 两档断言（与 compose 冒烟 scripts/smoke_test.py 同一不变量族，但跑在集群路径）：
   A. 边缘可观测（无需上游回显）：fail-closed 401/403、per-tenant 限流隔离 —— 网关就绪即跑。
-  B. 上游回显依赖（需 governance 回显其收到的请求头）：X-Tenant-* 注入正确性、防伪、
+  B. 上游回显依赖（需上游回显其收到的请求头）：X-Tenant-* 注入正确性、防伪、
      ICD §8 头名一致性 —— 需 UPSTREAM_ECHO_PATH 指向回显端点；未接则 SKIP（标注 pending #15）。
+
+  ③ privacy 末端（主仓 #29 已落 chart 的 privacy-api 路由 + privacy-upstream）：
+     A 档加 privacy 路由边缘 fail-closed；B 档加「privacy 经 gateway 可达 + X-Tenant-* 注入正确」，
+     依 PRIVACY_ECHO_PATH（privacy 上游回显端点，形态待 #15/privacy 约定）；未接则 SKIP（pending #15）。
 
 环境变量（脱敏 demo 默认；集群细节随 #15 落地再定）：
   GATEWAY_URL        默认 http://platform-gateway:9080（集群 Service；本地 port-forward 改 http://127.0.0.1:9080）
@@ -20,6 +24,9 @@
   RATELIMIT_MAX      默认 2（限流阈值；与所测路由的 count 对齐）
   UPSTREAM_ECHO_PATH 默认 空 —— 网关上「回显请求头」的受保护路径。compose 干跑可设 /api/headers；
                      集群接真 governance 的回显端点（形态待 #15 与 governance 约定，回显体须含收到的请求头）。
+  PRIVACY_PATH       默认 /api/privacy/get（privacy 受保护路由；边缘 fail-closed 检查不依赖上游存在该路径）
+  PRIVACY_ECHO_PATH  默认 空 —— /api/privacy/* 下「privacy 上游回显其收到请求头」的网关路径（形态待 #15/privacy 约定）；
+                     未设则 privacy 注入档 SKIP（pending #15）。本地 compose 干跑可设 /api/privacy/get。
 """
 import base64
 import json
@@ -39,6 +46,8 @@ PROTECTED = os.environ.get("PROTECTED_PATH") or "/api/get"
 RATELIMIT = os.environ.get("RATELIMIT_PATH") or "/ratelimit/get"
 RMAX = int(os.environ.get("RATELIMIT_MAX") or "2")
 ECHO = (os.environ.get("UPSTREAM_ECHO_PATH") or "").strip()
+PRIVACY_PATH = os.environ.get("PRIVACY_PATH") or "/api/privacy/get"
+PRIVACY_ECHO = (os.environ.get("PRIVACY_ECHO_PATH") or "").strip()
 # REQUIRE_FULL=1：集群就绪后置位——B 档（注入/防伪/头名一致性，#9 验收核心）因条件不具备而跳过即视为 FAIL，
 # 防「#15 落地后有人忘设 UPSTREAM_ECHO_PATH → 核心断言从不真跑却长期显绿」。
 REQUIRE_FULL = (os.environ.get("REQUIRE_FULL") or "").strip().lower() not in ("", "0", "false", "no")
@@ -111,6 +120,14 @@ def main():
     c.check("fail-closed：superadmin（无 org 声明）打租户路由 → 403",
             http("GET", f"{GW}{PROTECTED}", headers=auth(token_su))[0] == 403)
 
+    # privacy 路由边缘 fail-closed（③ · 边缘可观测，无需上游回显；privacy 路由复用 auth-tenant 链）。
+    # no-token/dave 在网关边缘即被 openid-connect/tenant-context 拒绝，状态码不依赖 privacy 上游是否存在；
+    # 「privacy 路由确实命中独立 privacy-upstream」由下方 B 档回显或 compose smoke 守护。
+    c.check("fail-closed：privacy 路由无 token → 401",
+            http("GET", f"{GW}{PRIVACY_PATH}")[0] == 401)
+    c.check("fail-closed：privacy 路由 dave 多 membership 无 active_organization → 403",
+            http("GET", f"{GW}{PRIVACY_PATH}", headers=auth(token_dave))[0] == 403)
+
     # per-tenant 限流隔离：集群 chart 仅落 /api（100/60），未部署低阈值样例路由时自动 SKIP。
     # 注意：假定 alice 在 60s 窗口内配额新鲜、且网关单副本（limit-count policy=local 各副本独立计数）。
     # 多副本集群下该档应靠 SKIP 或改用 redis policy 验证——故隔离不变量主要由 compose smoke（单副本）守护。
@@ -172,6 +189,35 @@ def main():
             c.check("ICD §8 头名一致性（注入端子集）：上游 X-Tenant-* 头名 ⊆ canonical 且含 Id/Org",
                     tenant_keys <= canon and CANON_ID in tenant_keys and CANON_ORG in tenant_keys,
                     f"got {sorted(tenant_keys)}")
+
+    # ── B 档 · ③ privacy 末端（pending #15）：privacy 经 gateway 可达 + X-Tenant-* 注入正确 ──
+    # privacy 路由 /api/privacy/* 在集群 rewrite→/api/$1 命中真实编排层 /api/v1/psi/*，无通用 echo 端点；
+    # 故需 PRIVACY_ECHO_PATH 指向「privacy 上游回显其收到请求头」的网关路径（形态待 #15 与 privacy 约定）。
+    # 与 governance 的 B 档同构：未接则 gated（REQUIRE_FULL 下 FAIL 防静默变绿，否则 SKIP pending #15）。
+    if not PRIVACY_ECHO:
+        gated(c, "privacy 经 gateway 可达 + X-Tenant-Id=acme 注入（alice，经 /api/privacy/*）",
+              "PRIVACY_ECHO_PATH 未设——pending privacy 回显端点(#15)；privacy 路由+upstream 已在主仓 chart configmap")
+    else:
+        code, body = http("GET", f"{GW}{PRIVACY_ECHO}", headers=auth(token_alice))
+        if code != 200:
+            gated(c, "privacy 经 gateway 可达 + X-Tenant-* 注入",
+                  f"privacy 回显端点 {PRIVACY_ECHO} 返回 {code}（期望 200）——检查 PRIVACY_ECHO_PATH 与 privacy 回显实现")
+        else:
+            h_p = extract_headers(body)
+            c.check("privacy：alice 经 /api/privacy/* 可达且上游收到 X-Tenant-Id=acme",
+                    header_value(h_p, CANON_ID) == "acme", f"got {header_value(h_p, CANON_ID)!r}")
+            c.check("privacy：上游收到 X-Tenant-Org=acme",
+                    header_value(h_p, CANON_ORG) == "acme", f"got {header_value(h_p, CANON_ORG)!r}")
+            # 防伪在 privacy 路径同样成立（复用 auth-tenant 链）：伪造 X-Tenant-*/X-Userinfo 应被剥离/覆盖。
+            forged_p = base64.b64encode(
+                json.dumps({"organization": "evil-tenant", "sub": "attacker"}).encode()).decode()
+            h_ps = extract_headers(http("GET", f"{GW}{PRIVACY_ECHO}", headers=auth(token_alice, {
+                CANON_ID: "spoofed-by-client",
+                "X-Userinfo": forged_p,
+            }))[1])
+            tid_ps = header_value(h_ps, CANON_ID)
+            c.check("privacy：伪造 X-Tenant-Id/X-Userinfo 被剥离/覆盖为可信值（acme）",
+                    tid_ps == "acme", f"got {tid_ps!r}")
 
     c.finish("CLUSTER-E2E")
 
