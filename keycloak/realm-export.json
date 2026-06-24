@@ -26,7 +26,8 @@
   "roles": {
     "realm": [
       { "name": "security-viewer", "description": "数据安全：只读查看（probe/分类分级/审计查询）— 脱敏 demo 角色" },
-      { "name": "security-admin", "description": "数据安全：管理（库表级授权）— 脱敏 demo 角色" }
+      { "name": "security-admin", "description": "数据安全：管理（库表级授权）— 脱敏 demo 角色" },
+      { "name": "SUPERADMIN", "description": "平台管理员 — 跨租户高权（control-plane 租户审批/开通/挂起）；脱敏 demo 角色" }
     ]
   },
   "clients": [
@@ -42,6 +43,130 @@
       "webOrigins": ["*"],
       "attributes": {
         "post.logout.redirect.uris": "+"
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant-org",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenant",
+            "claim.name": "organization",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "active-org",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "active_tenant",
+            "claim.name": "active_organization",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "usermodel.realmRoleMapping.rolePrefix": "",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "hashmatrix-webui",
+      "name": "HashMatrix Console SPA (demo)",
+      "description": "租户面前端公共客户端（授权码流 + PKCE，浏览器登录）；脱敏 demo。",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect",
+      "redirectUris": ["http://console.localdev:9080/*", "http://localhost:5173/*"],
+      "webOrigins": ["+"],
+      "attributes": {
+        "post.logout.redirect.uris": "+",
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant-org",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenant",
+            "claim.name": "organization",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "active-org",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "active_tenant",
+            "claim.name": "active_organization",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "usermodel.realmRoleMapping.rolePrefix": "",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "hashmatrix-admin",
+      "name": "HashMatrix Admin SPA (demo)",
+      "description": "运营面前端公共客户端（授权码流 + PKCE，浏览器登录）；脱敏 demo。",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect",
+      "redirectUris": ["http://admin.localdev:9080/*", "http://localhost:5174/*"],
+      "webOrigins": ["+"],
+      "attributes": {
+        "post.logout.redirect.uris": "+",
+        "pkce.code.challenge.method": "S256"
       },
       "protocolMappers": [
         {
@@ -151,7 +276,8 @@
       "lastName": "Admin",
       "credentials": [
         { "type": "password", "value": "Passw0rd!", "temporary": false }
-      ]
+      ],
+      "realmRoles": ["SUPERADMIN"]
     }
   ]
 }
