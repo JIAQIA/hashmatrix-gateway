@@ -101,6 +101,20 @@ routes:
       proxy-rewrite:
         regex_uri: ["^/api/privacy/(.*)", "/api/$1"]
 
+  # ── 组织成员自管理（租户自管理面）：结构镜像主仓 chart `configmap.yaml` 的 control-plane-members-api（集群 SoT）──
+  # 本地仅把上游换成 mock-upstream（echo）。集群侧 control-plane 同前缀下既有 /api/v1/*（require_tenant=false，
+  # superadmin 跨租户管理面），故 chart 用 priority 11 > 10 + require_tenant=true 把成员面与之区分；本地无该 false 覆盖，
+  # 此路由主要为**结构对齐 + 冒烟可断言**（成员面 require_tenant=true、注入 X-Tenant-*）。契约见主仓 contracts/openapi/
+  # control-plane-v1.yaml /v1/org/members（#57）；require_tenant 继承 auth-tenant 默认 true（不覆盖 tenant-context）。
+  # ⚠️ 改本路径时须同步主仓 chart control-plane-members-api（防漂移）。
+  - id: control-plane-members-api
+    name: control-plane-members-api
+    desc: "组织成员自管理（租户自管理 · require_tenant=true）——镜像集群 SoT，本地路由到 mock-upstream"
+    uris: ["/api/v1/org/members", "/api/v1/org/members/*"]
+    priority: 11
+    upstream_id: mock-upstream
+    plugin_config_id: auth-tenant
+
   # ── 限流样例：按租户维度，count=2/60s，便于冒烟验证「每租户独立配额」 ──
   - id: ratelimit-demo
     name: ratelimit-demo
