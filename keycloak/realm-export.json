@@ -27,7 +27,8 @@
     "realm": [
       { "name": "security-viewer", "description": "数据安全：只读查看（probe/分类分级/审计查询）— 脱敏 demo 角色" },
       { "name": "security-admin", "description": "数据安全：管理（库表级授权）— 脱敏 demo 角色" },
-      { "name": "SUPERADMIN", "description": "平台管理员 — 跨租户高权（control-plane 租户审批/开通/挂起）；脱敏 demo 角色" }
+      { "name": "SUPERADMIN", "description": "平台管理员 — 跨租户高权（control-plane 租户审批/开通/挂起）；脱敏 demo 角色" },
+      { "name": "superadmin", "description": "平台管理员（小写）— admin-webui SPA 守卫用；与 SUPERADMIN 并存为临时方案，待 control-plane 改用小写后收敛（见 control-plane 契约 issue）" }
     ]
   },
   "clients": [
@@ -100,7 +101,7 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
       "protocol": "openid-connect",
-      "redirectUris": ["http://console.localdev:9080/*", "http://localhost:5173/*"],
+      "redirectUris": ["http://console.localhost:9080/*", "http://console.localdev:9080/*", "http://localhost:5173/*"],
       "webOrigins": ["+"],
       "attributes": {
         "post.logout.redirect.uris": "+",
@@ -162,7 +163,7 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
       "protocol": "openid-connect",
-      "redirectUris": ["http://admin.localdev:9080/*", "http://localhost:5174/*"],
+      "redirectUris": ["http://admin.localhost:9080/*", "http://admin.localdev:9080/*", "http://localhost:5174/*"],
       "webOrigins": ["+"],
       "attributes": {
         "post.logout.redirect.uris": "+",
@@ -277,7 +278,7 @@
       "credentials": [
         { "type": "password", "value": "Passw0rd!", "temporary": false }
       ],
-      "realmRoles": ["SUPERADMIN"]
+      "realmRoles": ["SUPERADMIN", "superadmin"]
     }
   ]
 }
